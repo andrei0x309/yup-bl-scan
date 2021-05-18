@@ -12,16 +12,25 @@ const performance = perf_hooks.performance;
 
 // Config to control the script
 const scriptOptions = {
-  getBlacklist: true, // Should we redownload the list
+  getBlacklist: false, // Should we redownload the list
   loggerVerbose: false,
   whiteList: [
     // BlackListed accounts that are allowed to create new accounts(skip those)
+    'yupyupyupyup',
   ],
   // How many last transaction per account to scan:
   // increasing this will increse the executing time exponentially
   noLastTransactionToScan: 50,
   // How many blacklist accounts should be fetched from table ( only works on redownloading the blacklist)
   blacklistLimit: 4000,
+  // Contiune From account ( 0 is from begining )
+  contineFromAccount: 3399,
+  // Console output at every scanned account
+  enableAccountConsoleOutput: true,
+  // End stats Output
+  enableEndOutput: true,
+  // Disable write to suspects.txt
+  disableWriteSuspects: true,
 };
 
 // Utils - Start
@@ -59,13 +68,17 @@ if (scriptOptions.getBlacklist) {
 }
 
 // Don't check whitelisted accounts ( blacklisted accounts that are allowed to make new accounts ) and skip the first two which are invalid: "" , ".ajri...5.5"
-const [, , ...filtredBlList] = blacklistedAccounts.rows
+let [, , ...filtredBlList] = blacklistedAccounts.rows
   .filter((blacklistedAccount) => !scriptOptions.whiteList.find((wAccount) => wAccount === blacklistedAccount.owner))
   .map((e) => e.owner);
 
+if (scriptOptions.contineFromAccount > 0) {
+  filtredBlList = filtredBlList.slice(scriptOptions.contineFromAccount, scriptOptions.blacklistLimit);
+}
+
 const timeStart = performance.now();
 const susAccounts = [];
-let [accountsScanned, transactionsScanned] = [0, 0];
+let [accountsScanned, transactionsScanned] = scriptOptions.contineFromAccount > 0 ? [scriptOptions.contineFromAccount, 0] : [0, 0];
 for (const blackListedAccount of filtredBlList) {
   let accountInfo;
   try {
@@ -109,22 +122,36 @@ for (const blackListedAccount of filtredBlList) {
       }
     }
   }
-  console.log(`Accounts Scanned: ${accountsScanned} , Transactions Scanned: ${transactionsScanned}, Sus ACC: [ ${susAccounts} ]`);
+  if (scriptOptions.enableAccountConsoleOutput)
+    console.log(`Accounts Scanned: ${accountsScanned} , Transactions Scanned: ${transactionsScanned}, Sus ACC: [ ${susAccounts} ]`);
 }
 
 const timeEnd = performance.now();
 
-// Write Suspect file list
-const file = fs.createWriteStream('suspects.txt', {
-  autoClose: false,
-  flags: 'w',
-});
-susAccounts.forEach((v) => {
-  file.write(`${v}\n`);
-});
-file.write(`\nScan Date: ${new Date().toString()}\n`);
-file.write(`Accounts Scanned: ${accountsScanned} , Transactions Scanned: ${transactionsScanned}\n`);
-file.write(`Scan total duration: ${getTimeString(timeEnd - timeStart)}\n`);
-file.close();
+const endMsg = {
+  date: `\nScan Date: ${new Date().toString()}\n`,
+  stat: `Accounts Scanned: ${accountsScanned} , Transactions Scanned: ${transactionsScanned}\n`,
+  duration: `Scan total duration: ${getTimeString(timeEnd - timeStart)}\n`,
+};
+
+if (!scriptOptions.disableWriteSuspects) {
+  // Write Suspect file list
+  const file = fs.createWriteStream('suspects.txt', {
+    autoClose: false,
+    flags: 'w',
+  });
+  susAccounts.forEach((v) => {
+    file.write(`${v}\n`);
+  });
+  file.write(endMsg.date);
+  file.write(endMsg.stat);
+  file.write(endMsg.duration);
+  file.close();
+}
+if (scriptOptions.enableEndOutput) {
+  console.log(endMsg.date);
+  console.log(endMsg.stat);
+  console.log(endMsg.duration);
+}
 
 console.log('DONE !');
